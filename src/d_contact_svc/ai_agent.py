@@ -1,6 +1,7 @@
 import os
 import requests
 import logging
+import re
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -28,6 +29,10 @@ def identify_email_owners(email_contexts: list) -> list:
     """
     Identify email owners using GPT-4o-mini API by processing the provided email contexts.
     It batches the input for optimal performance and makes secure API calls with proper error handling.
+
+    After receiving API results (or fallback results in case of API failure), this function
+    iterates through each result. For each result with a missing 'owner', it applies a regex
+    to the 'email_context' field to extract a valid email address if present.
 
     :param email_contexts: List of email context strings
     :return: List of dictionaries where each dictionary contains the email_context and the identified owner (or None if not identified).
@@ -60,5 +65,18 @@ def identify_email_owners(email_contexts: list) -> list:
         logging.error(e, exc_info=True)
         # Fallback for complete failure: mark all provided contexts with unknown owner
         results = [{"email_context": ctx, "owner": None} for ctx in email_contexts]
+
+    # Post-processing: apply regex search for missing owner emails
+    email_regex = re.compile(r'([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})')
+    for res in results:
+        if res.get("owner") is None:
+            try:
+                context = res.get("email_context", "")
+                match = email_regex.search(context)
+                if match:
+                    res["owner"] = match.group(1)
+            except Exception as e:
+                logging.error(e, exc_info=True)
+                # In case of exception during regex extraction, leave owner as None
     
     return results
